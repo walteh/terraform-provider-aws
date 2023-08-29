@@ -105,6 +105,11 @@ func ResourceObject() *schema.Resource {
 				Optional: true,
 				Computed: true,
 			},
+			"ignore_default_tags": {
+				Type:     schema.TypeBool,
+				Optional: true,
+				Default:  false,
+			},
 			"etag": {
 				Type: schema.TypeString,
 				// This will conflict with SSE-C and SSE-KMS encryption and multi-part upload
@@ -343,6 +348,10 @@ func resourceObjectUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 
 	if d.HasChange("tags_all") {
 		o, n := d.GetChange("tags_all")
+
+		if d.Get("ignore_default_tags").(bool) {
+			_, n = d.GetChange("tags")
+		}
 
 		if err := ObjectUpdateTags(ctx, conn, bucket, key, o, n); err != nil {
 			return sdkdiag.AppendErrorf(diags, "updating tags: %s", err)

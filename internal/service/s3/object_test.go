@@ -1052,6 +1052,45 @@ func TestAccS3Object_tagsMultipleSlashes(t *testing.T) {
 	})
 }
 
+func TestAccS3Object_ignoreDefaultTags(t *testing.T) {
+	ctx := acctest.Context(t)
+	var obj1, obj2 s3.GetObjectOutput
+	rName := sdkacctest.RandomWithPrefix(acctest.ResourcePrefix)
+	resourceName := "aws_s3_object.object"
+	key := "test-ignore-default-tags-key"
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.PreCheck(ctx, t) },
+		ErrorCheck:               acctest.ErrorCheck(t, s3.EndpointsID),
+		ProtoV5ProviderFactories: acctest.ProtoV5ProviderFactories,
+		CheckDestroy:             testAccCheckObjectDestroy(ctx),
+		Steps: []resource.TestStep{
+			{
+				PreConfig: func() {},
+				Config:    testAccObjectConfig_withIgnoreDefaultTags(rName, key, "initialContent", true),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckObjectExists(ctx, resourceName, &obj1),
+					resource.TestCheckResourceAttr(resourceName, "tags.%", "2"), // Verify only the user-defined tags
+					resource.TestCheckResourceAttr(resourceName, "tags.UserDefinedKey1", "UserDefinedValue1"),
+					resource.TestCheckResourceAttr(resourceName, "tags.UserDefinedKey2", "UserDefinedValue2"),
+				),
+			},
+			{
+				PreConfig: func() {},
+				Config:    testAccObjectConfig_withIgnoreDefaultTags(rName, key, "updatedContent", false),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckObjectExists(ctx, resourceName, &obj2),
+					resource.TestCheckResourceAttr(resourceName, "tags.%", "4"), // Verify both default and user-defined tags
+					resource.TestCheckResourceAttr(resourceName, "tags.DefaultKey1", "DefaultValue1"),
+					resource.TestCheckResourceAttr(resourceName, "tags.DefaultKey2", "DefaultValue2"),
+					resource.TestCheckResourceAttr(resourceName, "tags.UserDefinedKey1", "UserDefinedValue1"),
+					resource.TestCheckResourceAttr(resourceName, "tags.UserDefinedKey2", "UserDefinedValue2"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccS3Object_objectLockLegalHoldStartWithNone(t *testing.T) {
 	ctx := acctest.Context(t)
 	var obj1, obj2, obj3 s3.GetObjectOutput
@@ -1959,6 +1998,36 @@ resource "aws_s3_object" "object" {
   content = %[3]q
 }
 `, rName, key, content)
+}
+
+func testAccObjectConfig_withIgnoreDefaultTags(rName, key, content string, ignoreDefaultTags bool) string {
+	return fmt.Sprintf(`
+resource "aws_s3_bucket" "test" {
+  bucket        = %[1]q
+  force_destroy = true
+}
+
+resource "aws_s3_bucket_versioning" "test" {
+  bucket = aws_s3_bucket.test.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_object" "object" {
+  # Must have bucket versioning enabled first
+  bucket  = aws_s3_bucket_versioning.test.bucket
+  key     = %[2]q
+  content = %[3]q
+
+  tags = {
+    UserDefinedKey1 = "UserDefinedValue1"
+    UserDefinedKey2 = "UserDefinedValue2"
+  }
+
+  ignore_default_tags = %[4]t
+}
+`, rName, key, content, ignoreDefaultTags)
 }
 
 func testAccObjectConfig_metadata(rName string, metadataKey1, metadataValue1, metadataKey2, metadataValue2 string) string {
