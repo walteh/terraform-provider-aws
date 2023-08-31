@@ -346,13 +346,30 @@ func resourceObjectUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 		}
 	}
 
-	if d.HasChange("tags_all") {
-		o, n := d.GetChange("tags_all")
+	ignore := d.Get("ignore_default_tags").(bool)
 
-		if d.Get("ignore_default_tags").(bool) {
+	var o, n interface{}
+	shouldUpdateObjectTags := true
+
+	if d.HasChange("ignore_default_tags") {
+		if ignore {
+			o, _ = d.GetChange("tags_all")
 			_, n = d.GetChange("tags")
+		} else {
+			o, _ = d.GetChange("tags")
+			_, n = d.GetChange("tags_all")
 		}
+	} else {
+		if ignore && d.HasChange("tags") {
+			o, n = d.GetChange("tags")
+		} else if !ignore && d.HasChange("tags_all") {
+			o, n = d.GetChange("tags_all")
+		} else {
+			shouldUpdateObjectTags = false
+		}
+	}
 
+	if shouldUpdateObjectTags {
 		if err := ObjectUpdateTags(ctx, conn, bucket, key, o, n); err != nil {
 			return sdkdiag.AppendErrorf(diags, "updating tags: %s", err)
 		}
@@ -571,6 +588,12 @@ func resourceObjectCustomizeDiff(_ context.Context, d *schema.ResourceDiff, meta
 	if d.HasChange("source_hash") {
 		d.SetNewComputed("version_id")
 		d.SetNewComputed("etag")
+	}
+
+	if d.HasChange("tags_all") {
+		if d.Get("ignore_default_tags").(bool) {
+			d.SetNewComputed("tags_all")
+		}
 	}
 
 	return nil

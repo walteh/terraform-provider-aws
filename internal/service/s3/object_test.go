@@ -1071,8 +1071,8 @@ func TestAccS3Object_ignoreDefaultTags(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckObjectExists(ctx, resourceName, &obj1),
 					resource.TestCheckResourceAttr(resourceName, "tags.%", "2"), // Verify only the user-defined tags
-					resource.TestCheckResourceAttr(resourceName, "tags.UserDefinedKey1", "UserDefinedValue1"),
-					resource.TestCheckResourceAttr(resourceName, "tags.UserDefinedKey2", "UserDefinedValue2"),
+					resource.TestCheckResourceAttr(resourceName, "tags.CustomKey1", "CustomValue1"),
+					resource.TestCheckResourceAttr(resourceName, "tags.CustomKey2", "CustomValue2"),
 				),
 			},
 			{
@@ -1083,8 +1083,8 @@ func TestAccS3Object_ignoreDefaultTags(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "tags.%", "4"), // Verify both default and user-defined tags
 					resource.TestCheckResourceAttr(resourceName, "tags.DefaultKey1", "DefaultValue1"),
 					resource.TestCheckResourceAttr(resourceName, "tags.DefaultKey2", "DefaultValue2"),
-					resource.TestCheckResourceAttr(resourceName, "tags.UserDefinedKey1", "UserDefinedValue1"),
-					resource.TestCheckResourceAttr(resourceName, "tags.UserDefinedKey2", "UserDefinedValue2"),
+					resource.TestCheckResourceAttr(resourceName, "tags.CustomKey1", "CustomValue1"),
+					resource.TestCheckResourceAttr(resourceName, "tags.CustomKey2", "CustomValue2"),
 				),
 			},
 		},
@@ -2002,6 +2002,16 @@ resource "aws_s3_object" "object" {
 
 func testAccObjectConfig_withIgnoreDefaultTags(rName, key, content string, ignoreDefaultTags bool) string {
 	return fmt.Sprintf(`
+provider "aws" {
+  alias = "ignore_default_tags"
+  default_tags {
+    tags   = {
+      "DefaultKey1" = "DefaultValue1"
+      "DefaultKey2" = "DefaultValue2"
+    }
+  }
+}
+
 resource "aws_s3_bucket" "test" {
   bucket        = %[1]q
   force_destroy = true
@@ -2015,14 +2025,15 @@ resource "aws_s3_bucket_versioning" "test" {
 }
 
 resource "aws_s3_object" "object" {
+  provider = aws.ignore_default_tags
   # Must have bucket versioning enabled first
   bucket  = aws_s3_bucket_versioning.test.bucket
   key     = %[2]q
   content = %[3]q
 
   tags = {
-    UserDefinedKey1 = "UserDefinedValue1"
-    UserDefinedKey2 = "UserDefinedValue2"
+    CustomKey1 = "CustomValue1"
+    CustomKey2 = "CustomValue2"
   }
 
   ignore_default_tags = %[4]t
