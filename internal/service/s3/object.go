@@ -53,7 +53,7 @@ func ResourceObject() *schema.Resource {
 
 		CustomizeDiff: customdiff.Sequence(
 			resourceObjectCustomizeDiff,
-			verify.SetTagsDiff,
+			resourceObjectCustomizeTagDiff,
 		),
 
 		Schema: map[string]*schema.Schema{
@@ -280,6 +280,15 @@ func resourceObjectRead(ctx context.Context, d *schema.ResourceData, meta interf
 		return sdkdiag.AppendErrorf(diags, "listing tags for S3 Bucket (%s) Object (%s): unable to convert tags", bucket, key)
 	}
 
+	fmt.Println("before: resourceObjectRead", tags.Map())
+
+	if d.Get("ignore_default_tags").(bool) {
+		fmt.Println("removing default tags: resourceObjectRead")
+		tags = tags.RemoveDefaultConfig(meta.(*conns.AWSClient).DefaultTagsConfig)
+
+	}
+	fmt.Println("after: resourceObjectRead", tags.Map())
+
 	setTagsOut(ctx, Tags(tags))
 
 	return diags
@@ -346,30 +355,31 @@ func resourceObjectUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 		}
 	}
 
-	ignore := d.Get("ignore_default_tags").(bool)
+	// ignore := d.Get("ignore_default_tags").(bool)
 
-	var o, n interface{}
-	shouldUpdateObjectTags := true
+	// var o, n interface{}
+	// shouldUpdateObjectTags := true
 
-	if d.HasChange("ignore_default_tags") {
-		if ignore {
-			o, _ = d.GetChange("tags_all")
-			_, n = d.GetChange("tags")
-		} else {
-			o, _ = d.GetChange("tags")
-			_, n = d.GetChange("tags_all")
-		}
-	} else {
-		if ignore && d.HasChange("tags") {
-			o, n = d.GetChange("tags")
-		} else if !ignore && d.HasChange("tags_all") {
-			o, n = d.GetChange("tags_all")
-		} else {
-			shouldUpdateObjectTags = false
-		}
-	}
+	// if d.HasChange("ignore_default_tags") {
+	// 	if ignore {
+	// 		o, _ = d.GetChange("tags_all")
+	// 		_, n = d.GetChange("tags")
+	// 	} else {
+	// 		o, _ = d.GetChange("tags")
+	// 		_, n = d.GetChange("tags_all")
+	// 	}
+	// } else {
+	// 	if ignore && d.HasChange("tags") {
+	// 		o, n = d.GetChange("tags")
+	// 	} else if !ignore && d.HasChange("tags_all") {
+	// 		o, n = d.GetChange("tags_all")
+	// 	} else {
+	// 		shouldUpdateObjectTags = false
+	// 	}
+	// }
 
-	if shouldUpdateObjectTags {
+	if d.HasChange("tags_all") {
+		o, n := d.GetChange("tags_all")
 		if err := ObjectUpdateTags(ctx, conn, bucket, key, o, n); err != nil {
 			return sdkdiag.AppendErrorf(diags, "updating tags: %s", err)
 		}
@@ -427,7 +437,17 @@ func resourceObjectUpload(ctx context.Context, d *schema.ResourceData, meta inte
 	conn := meta.(*conns.AWSClient).S3Conn(ctx)
 	uploader := s3manager.NewUploaderWithClient(conn)
 	defaultTagsConfig := meta.(*conns.AWSClient).DefaultTagsConfig
-	tags := defaultTagsConfig.MergeTags(tftags.New(ctx, d.Get("tags").(map[string]interface{})))
+	tags := tftags.New(ctx, d.Get("tags").(map[string]interface{}))
+	tags = defaultTagsConfig.MergeTags(tags)
+	fmt.Println("before: resourceObjectUpload", tags.Map())
+
+	if d.Get("ignore_default_tags").(bool) {
+		fmt.Println("removing default tags: resourceObjectUpload")
+
+		tags = tags.RemoveDefaultConfig(defaultTagsConfig)
+
+	}
+	fmt.Println("after: resourceObjectUpload", tags.Map())
 
 	var body io.ReadSeeker
 
@@ -580,7 +600,8 @@ func validateMetadataIsLowerCase(v interface{}, k string) (ws []string, errors [
 	return
 }
 
-func resourceObjectCustomizeDiff(_ context.Context, d *schema.ResourceDiff, meta interface{}) error {
+func resourceObjectCustomizeDiff(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+
 	if hasObjectContentChanges(d) {
 		return d.SetNewComputed("version_id")
 	}
@@ -590,13 +611,20 @@ func resourceObjectCustomizeDiff(_ context.Context, d *schema.ResourceDiff, meta
 		d.SetNewComputed("etag")
 	}
 
-	if d.HasChange("tags_all") {
-		if d.Get("ignore_default_tags").(bool) {
-			d.SetNewComputed("tags_all")
-		}
+	return nil
+}
+
+func resourceObjectCustomizeTagDiff(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+
+	fmt.Println("before: resourceObjectCustomizeDiff[tags_all]", d.Get("tags_all").(map[string]interface{}))
+
+	if d.Get("ignore_default_tags").(bool) {
+		return nil
 	}
 
-	return nil
+	fmt.Println("after: resourceObjectCustomizeDiff[tags_all]", d.Get("tags_all").(map[string]interface{}))
+
+	return verify.SetTagsDiff(ctx, d, meta)
 }
 
 func hasObjectContentChanges(d verify.ResourceDiffer) bool {
@@ -610,6 +638,7 @@ func hasObjectContentChanges(d verify.ResourceDiffer) bool {
 		"content_type",
 		"content",
 		"etag",
+		"ignore_default_tags",
 		"kms_key_id",
 		"metadata",
 		"server_side_encryption",

@@ -1070,9 +1070,9 @@ func TestAccS3Object_ignoreDefaultTags(t *testing.T) {
 				Config:    testAccObjectConfig_withIgnoreDefaultTags(rName, key, "initialContent", true),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckObjectExists(ctx, resourceName, &obj1),
-					resource.TestCheckResourceAttr(resourceName, "tags.%", "2"), // Verify only the user-defined tags
-					resource.TestCheckResourceAttr(resourceName, "tags.CustomKey1", "CustomValue1"),
-					resource.TestCheckResourceAttr(resourceName, "tags.CustomKey2", "CustomValue2"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.%", "2"), // Verify only the user-defined tags
+					resource.TestCheckResourceAttr(resourceName, "tags_all.CustomKey1", "CustomValue1"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.CustomKey2", "CustomValue2"),
 				),
 			},
 			{
@@ -1080,11 +1080,11 @@ func TestAccS3Object_ignoreDefaultTags(t *testing.T) {
 				Config:    testAccObjectConfig_withIgnoreDefaultTags(rName, key, "updatedContent", false),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckObjectExists(ctx, resourceName, &obj2),
-					resource.TestCheckResourceAttr(resourceName, "tags.%", "4"), // Verify both default and user-defined tags
-					resource.TestCheckResourceAttr(resourceName, "tags.DefaultKey1", "DefaultValue1"),
-					resource.TestCheckResourceAttr(resourceName, "tags.DefaultKey2", "DefaultValue2"),
-					resource.TestCheckResourceAttr(resourceName, "tags.CustomKey1", "CustomValue1"),
-					resource.TestCheckResourceAttr(resourceName, "tags.CustomKey2", "CustomValue2"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.%", "4"), // Verify both default and user-defined tags
+					resource.TestCheckResourceAttr(resourceName, "tags_all.DefaultKey1", "DefaultValue1"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.DefaultKey2", "DefaultValue2"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.CustomKey1", "CustomValue1"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.CustomKey2", "CustomValue2"),
 				),
 			},
 		},
@@ -2013,11 +2013,13 @@ provider "aws" {
 }
 
 resource "aws_s3_bucket" "test" {
+  provider = aws.ignore_default_tags
   bucket        = %[1]q
   force_destroy = true
 }
 
 resource "aws_s3_bucket_versioning" "test" {
+  provider = aws.ignore_default_tags
   bucket = aws_s3_bucket.test.id
   versioning_configuration {
     status = "Enabled"
