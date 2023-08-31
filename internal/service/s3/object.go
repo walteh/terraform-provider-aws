@@ -105,11 +105,6 @@ func ResourceObject() *schema.Resource {
 				Optional: true,
 				Computed: true,
 			},
-			"ignore_default_tags": {
-				Type:     schema.TypeBool,
-				Optional: true,
-				Default:  false,
-			},
 			"etag": {
 				Type: schema.TypeString,
 				// This will conflict with SSE-C and SSE-KMS encryption and multi-part upload
@@ -120,6 +115,11 @@ func ResourceObject() *schema.Resource {
 				ConflictsWith: []string{"kms_key_id"},
 			},
 			"force_destroy": {
+				Type:     schema.TypeBool,
+				Optional: true,
+				Default:  false,
+			},
+			"ignore_default_tags": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  false,
@@ -280,15 +280,6 @@ func resourceObjectRead(ctx context.Context, d *schema.ResourceData, meta interf
 		return sdkdiag.AppendErrorf(diags, "listing tags for S3 Bucket (%s) Object (%s): unable to convert tags", bucket, key)
 	}
 
-	fmt.Println("before: resourceObjectRead", tags.Map())
-
-	if d.Get("ignore_default_tags").(bool) {
-		fmt.Println("removing default tags: resourceObjectRead")
-		tags = tags.RemoveDefaultConfig(meta.(*conns.AWSClient).DefaultTagsConfig)
-
-	}
-	fmt.Println("after: resourceObjectRead", tags.Map())
-
 	setTagsOut(ctx, Tags(tags))
 
 	return diags
@@ -355,31 +346,21 @@ func resourceObjectUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 		}
 	}
 
-	// ignore := d.Get("ignore_default_tags").(bool)
+	fmt.Println("d.HasChange(tags_all): ", d.HasChange("tags_all"))
 
-	// var o, n interface{}
-	// shouldUpdateObjectTags := true
-
-	// if d.HasChange("ignore_default_tags") {
-	// 	if ignore {
-	// 		o, _ = d.GetChange("tags_all")
-	// 		_, n = d.GetChange("tags")
-	// 	} else {
-	// 		o, _ = d.GetChange("tags")
-	// 		_, n = d.GetChange("tags_all")
-	// 	}
-	// } else {
-	// 	if ignore && d.HasChange("tags") {
-	// 		o, n = d.GetChange("tags")
-	// 	} else if !ignore && d.HasChange("tags_all") {
-	// 		o, n = d.GetChange("tags_all")
-	// 	} else {
-	// 		shouldUpdateObjectTags = false
-	// 	}
+	// if d.Get("ignore_default_tags").(bool) {
+	// 	tags := tftags.New(ctx, d.Get("tags_all").(map[string]interface{}))
+	// 	tags = tags.RemoveDefaultConfig(meta.(*conns.AWSClient).DefaultTagsConfig)
+	// 	d.Set("tags_all", tags.Map())
 	// }
 
-	if d.HasChange("tags_all") {
+	if d.HasChange("tags_all") || d.HasChange("ignore_default_tags") {
+
 		o, n := d.GetChange("tags_all")
+
+		fmt.Println("o: ", o)
+		fmt.Println("n: ", n)
+
 		if err := ObjectUpdateTags(ctx, conn, bucket, key, o, n); err != nil {
 			return sdkdiag.AppendErrorf(diags, "updating tags: %s", err)
 		}
@@ -437,17 +418,14 @@ func resourceObjectUpload(ctx context.Context, d *schema.ResourceData, meta inte
 	conn := meta.(*conns.AWSClient).S3Conn(ctx)
 	uploader := s3manager.NewUploaderWithClient(conn)
 	defaultTagsConfig := meta.(*conns.AWSClient).DefaultTagsConfig
+
 	tags := tftags.New(ctx, d.Get("tags").(map[string]interface{}))
-	tags = defaultTagsConfig.MergeTags(tags)
-	fmt.Println("before: resourceObjectUpload", tags.Map())
 
 	if d.Get("ignore_default_tags").(bool) {
-		fmt.Println("removing default tags: resourceObjectUpload")
-
 		tags = tags.RemoveDefaultConfig(defaultTagsConfig)
-
+	} else {
+		tags = defaultTagsConfig.MergeTags(tags)
 	}
-	fmt.Println("after: resourceObjectUpload", tags.Map())
 
 	var body io.ReadSeeker
 
@@ -616,13 +594,12 @@ func resourceObjectCustomizeDiff(ctx context.Context, d *schema.ResourceDiff, me
 
 func resourceObjectCustomizeTagDiff(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
 
-	fmt.Println("before: resourceObjectCustomizeDiff[tags_all]", d.Get("tags_all").(map[string]interface{}))
-
 	if d.Get("ignore_default_tags").(bool) {
+		if d.HasChange("ignore_default_tags") {
+			d.SetNew("tags_all", d.Get("tags"))
+		}
 		return nil
 	}
-
-	fmt.Println("after: resourceObjectCustomizeDiff[tags_all]", d.Get("tags_all").(map[string]interface{}))
 
 	return verify.SetTagsDiff(ctx, d, meta)
 }
@@ -638,7 +615,6 @@ func hasObjectContentChanges(d verify.ResourceDiffer) bool {
 		"content_type",
 		"content",
 		"etag",
-		"ignore_default_tags",
 		"kms_key_id",
 		"metadata",
 		"server_side_encryption",

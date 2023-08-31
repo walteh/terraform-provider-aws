@@ -1052,9 +1052,9 @@ func TestAccS3Object_tagsMultipleSlashes(t *testing.T) {
 	})
 }
 
-func TestAccS3Object_ignoreDefaultTags(t *testing.T) {
+func TestAccS3Object_ignoreDefaultTags_create(t *testing.T) {
 	ctx := acctest.Context(t)
-	var obj1, obj2 s3.GetObjectOutput
+	var obj1, obj2, obj3, obj4 s3.GetObjectOutput
 	rName := sdkacctest.RandomWithPrefix(acctest.ResourcePrefix)
 	resourceName := "aws_s3_object.object"
 	key := "test-ignore-default-tags-key"
@@ -1067,24 +1067,118 @@ func TestAccS3Object_ignoreDefaultTags(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				PreConfig: func() {},
-				Config:    testAccObjectConfig_withIgnoreDefaultTags(rName, key, "initialContent", true),
+				Config:    testAccObjectConfig_withIgnoreDefaultTags(rName, key, "stuff", true, "X", 8, 2),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckObjectExists(ctx, resourceName, &obj1),
+					testAccCheckObjectBody(&obj1, "stuff"),
 					resource.TestCheckResourceAttr(resourceName, "tags_all.%", "2"), // Verify only the user-defined tags
-					resource.TestCheckResourceAttr(resourceName, "tags_all.CustomKey1", "CustomValue1"),
-					resource.TestCheckResourceAttr(resourceName, "tags_all.CustomKey2", "CustomValue2"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.CustomKey1", "CustomX1"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.CustomKey2", "CustomX2"),
 				),
 			},
 			{
 				PreConfig: func() {},
-				Config:    testAccObjectConfig_withIgnoreDefaultTags(rName, key, "updatedContent", false),
+				Config:    testAccObjectConfig_withIgnoreDefaultTags(rName, key, "stuff", false, "X", 3, 2),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckObjectExists(ctx, resourceName, &obj2),
-					resource.TestCheckResourceAttr(resourceName, "tags_all.%", "4"), // Verify both default and user-defined tags
-					resource.TestCheckResourceAttr(resourceName, "tags_all.DefaultKey1", "DefaultValue1"),
-					resource.TestCheckResourceAttr(resourceName, "tags_all.DefaultKey2", "DefaultValue2"),
-					resource.TestCheckResourceAttr(resourceName, "tags_all.CustomKey1", "CustomValue1"),
-					resource.TestCheckResourceAttr(resourceName, "tags_all.CustomKey2", "CustomValue2"),
+					testAccCheckObjectVersionIdEquals(&obj2, &obj1),
+					testAccCheckObjectBody(&obj2, "stuff"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.%", "5"), // Verify both default and user-defined tags
+					resource.TestCheckResourceAttr(resourceName, "tags_all.DefaultKey1", "DefaultX1"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.DefaultKey2", "DefaultX2"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.DefaultKey3", "DefaultX3"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.CustomKey1", "CustomX1"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.CustomKey2", "CustomX2"),
+				),
+			},
+			{
+				PreConfig: func() {},
+				Config:    testAccObjectConfig_withIgnoreDefaultTags(rName, key, "changed stuff", true, "X", 10, 2),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckObjectExists(ctx, resourceName, &obj3),
+					testAccCheckObjectVersionIdDiffers(&obj3, &obj2),
+					testAccCheckObjectBody(&obj3, "changed stuff"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.%", "2"), // Verify only the user-defined tags
+					resource.TestCheckResourceAttr(resourceName, "tags_all.CustomKey1", "CustomX1"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.CustomKey2", "CustomX2"),
+				),
+			},
+			{
+				PreConfig: func() {},
+				Config:    testAccObjectConfig_withIgnoreDefaultTags(rName, key, "changed stuff", false, "X", 0, 0),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckObjectExists(ctx, resourceName, &obj4),
+					testAccCheckObjectVersionIdEquals(&obj4, &obj3),
+					testAccCheckObjectBody(&obj4, "changed stuff"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.%", "0"), // Verify both default and user-defined tags
+				),
+			},
+		},
+	})
+}
+
+func TestAccS3Object_ignoreDefaultTags_existing(t *testing.T) {
+	ctx := acctest.Context(t)
+	var obj1, obj2, obj3, obj4 s3.GetObjectOutput
+	rName := sdkacctest.RandomWithPrefix(acctest.ResourcePrefix)
+	resourceName := "aws_s3_object.object"
+	key := "test-ignore-default-tags-key"
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:                 func() { acctest.PreCheck(ctx, t) },
+		ErrorCheck:               acctest.ErrorCheck(t, s3.EndpointsID),
+		ProtoV5ProviderFactories: acctest.ProtoV5ProviderFactories,
+		CheckDestroy:             testAccCheckObjectDestroy(ctx),
+		Steps: []resource.TestStep{
+			{
+				PreConfig: func() {},
+				Config:    testAccObjectConfig_withIgnoreDefaultTags(rName, key, "stuff", false, "Y", 2, 2),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckObjectExists(ctx, resourceName, &obj1),
+					testAccCheckObjectBody(&obj1, "stuff"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.%", "4"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.DefaultKey1", "DefaultY1"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.DefaultKey2", "DefaultY2"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.CustomKey1", "CustomY1"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.CustomKey2", "CustomY2"),
+				),
+			},
+			{
+				PreConfig: func() {},
+				Config:    testAccObjectConfig_withIgnoreDefaultTags(rName, key, "stuff", true, "Y", 2, 2),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckObjectExists(ctx, resourceName, &obj2),
+					testAccCheckObjectVersionIdEquals(&obj2, &obj1),
+					testAccCheckObjectBody(&obj2, "stuff"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.%", "2"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.CustomKey1", "CustomY1"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.CustomKey2", "CustomY2"),
+				),
+			},
+			{
+				PreConfig: func() {},
+				Config:    testAccObjectConfig_withIgnoreDefaultTags(rName, key, "changed stuff", false, "Y", 3, 3),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckObjectExists(ctx, resourceName, &obj3),
+					testAccCheckObjectVersionIdDiffers(&obj3, &obj2),
+					testAccCheckObjectBody(&obj3, "changed stuff"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.%", "6"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.DefaultKey1", "DefaultY1"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.DefaultKey2", "DefaultY2"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.DefaultKey3", "DefaultY3"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.CustomKey1", "CustomY1"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.CustomKey2", "CustomY2"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.CustomKey3", "CustomY3"),
+				),
+			},
+			{
+				PreConfig: func() {},
+				Config:    testAccObjectConfig_withIgnoreDefaultTags(rName, key, "changed stuff", true, "Y", 2, 0),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckObjectExists(ctx, resourceName, &obj4),
+					testAccCheckObjectVersionIdEquals(&obj4, &obj3),
+					testAccCheckObjectBody(&obj4, "changed stuff"),
+					resource.TestCheckResourceAttr(resourceName, "tags_all.%", "0"),
 				),
 			},
 		},
@@ -2000,14 +2094,26 @@ resource "aws_s3_object" "object" {
 `, rName, key, content)
 }
 
-func testAccObjectConfig_withIgnoreDefaultTags(rName, key, content string, ignoreDefaultTags bool) string {
+func testAccObjectConfig_withIgnoreDefaultTags(rName, key, content string, ignore bool, label string, numDefault, numCustom int) string {
+
+	var defaultTags string
+	for i := 1; i <= numDefault; i++ {
+		defaultTags += fmt.Sprintf(`
+		DefaultKey%d = "Default%s%d"`, i, label, i)
+	}
+
+	var customTags string
+	for i := 1; i <= numCustom; i++ {
+		customTags += fmt.Sprintf(`
+		CustomKey%d = "Custom%s%d"`, i, label, i)
+	}
+
 	return fmt.Sprintf(`
 provider "aws" {
   alias = "ignore_default_tags"
   default_tags {
-    tags   = {
-      "DefaultKey1" = "DefaultValue1"
-      "DefaultKey2" = "DefaultValue2"
+    tags = {
+	  %[5]s
     }
   }
 }
@@ -2034,13 +2140,12 @@ resource "aws_s3_object" "object" {
   content = %[3]q
 
   tags = {
-    CustomKey1 = "CustomValue1"
-    CustomKey2 = "CustomValue2"
+	%[6]s
   }
 
   ignore_default_tags = %[4]t
 }
-`, rName, key, content, ignoreDefaultTags)
+`, rName, key, content, ignore, defaultTags, customTags)
 }
 
 func testAccObjectConfig_metadata(rName string, metadataKey1, metadataValue1, metadataKey2, metadataValue2 string) string {
