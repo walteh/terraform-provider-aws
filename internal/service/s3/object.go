@@ -346,20 +346,9 @@ func resourceObjectUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 		}
 	}
 
-	fmt.Println("d.HasChange(tags_all): ", d.HasChange("tags_all"))
-
-	// if d.Get("ignore_default_tags").(bool) {
-	// 	tags := tftags.New(ctx, d.Get("tags_all").(map[string]interface{}))
-	// 	tags = tags.RemoveDefaultConfig(meta.(*conns.AWSClient).DefaultTagsConfig)
-	// 	d.Set("tags_all", tags.Map())
-	// }
-
-	if d.HasChange("tags_all") || d.HasChange("ignore_default_tags") {
+	if d.HasChange("tags_all") {
 
 		o, n := d.GetChange("tags_all")
-
-		fmt.Println("o: ", o)
-		fmt.Println("n: ", n)
 
 		if err := ObjectUpdateTags(ctx, conn, bucket, key, o, n); err != nil {
 			return sdkdiag.AppendErrorf(diags, "updating tags: %s", err)
@@ -595,10 +584,7 @@ func resourceObjectCustomizeDiff(ctx context.Context, d *schema.ResourceDiff, me
 func resourceObjectCustomizeTagDiff(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
 
 	if d.Get("ignore_default_tags").(bool) {
-		if d.HasChange("ignore_default_tags") {
-			d.SetNew("tags_all", d.Get("tags"))
-		}
-		return nil
+		return d.SetNew("tags_all", d.Get("tags"))
 	}
 
 	return verify.SetTagsDiff(ctx, d, meta)
